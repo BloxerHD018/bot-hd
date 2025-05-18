@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-serenity = { version = "0.12", features = ["client", "gateway", "framework"] }
+serenity = { version = "0.12", features = ["client", "gateway", "framework", "standard_framework", "rustls_backend", "http", "model", "utils"] }
 tokio = { version = "1", features = ["full"] }
 dotenvy = "0.15.7"

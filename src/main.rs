@@ -1,27 +1,10 @@
-use serenity::{
-    async_trait,
-    model::{channel::Message, gateway::Ready},
-    prelude::*,
-};
+use serenity::prelude::*;
 use std::env;
 use dotenvy::dotenv;
 
-struct Handler;
-
-#[async_trait]
-impl EventHandler for Handler {
-    async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "dumb" {
-            if let Err(why) = msg.channel_id.say(&ctx.http, "Says you dummy stfu").await {
-                println!("Error sending message: {:?}", why);
-            }
-        }
-    }
-
-    async fn ready(&self, _: Context, ready: Ready) {
-        println!("Connected to {}!", ready.user.name);
-    }
-}
+mod handler;
+mod events;
+mod commands;
 
 #[tokio::main]
 async fn main() {
@@ -29,9 +12,12 @@ async fn main() {
 
     let token = env::var("DISCORD_TOKEN").expect("No token found when logging into bot");
 
-    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::GUILD_MESSAGES
+    | GatewayIntents::MESSAGE_CONTENT
+    | GatewayIntents::GUILDS;
+
     let mut client = Client::builder(&token, intents)
-        .event_handler(Handler)
+        .event_handler(handler::Handler)
         .await
         .expect("Error creating Client");
 
