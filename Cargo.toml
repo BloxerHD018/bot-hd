@@ -7,3 +7,4 @@ edition = "2024"
 serenity = { version = "0.12", features = ["client", "gateway", "framework", "standard_framework", "rustls_backend", "http", "model", "utils"] }
 tokio = { version = "1", features = ["full"] }
 dotenvy = "0.15.7"
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-rustls"] }
