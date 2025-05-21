@@ -266,7 +266,7 @@ pub async fn execute<'a>(options: &[ResolvedOption<'a>], interaction: CommandInt
                                         return CreateInteractionResponseFollowup::new().content(response_text).ephemeral(*b);
                                     }
                                     None => {
-                                        return CreateInteractionResponseFollowup::new().content(response_text)
+                                        return CreateInteractionResponseFollowup::new().content(response_text).ephemeral(false);
                                     }
                                 }
                             }
