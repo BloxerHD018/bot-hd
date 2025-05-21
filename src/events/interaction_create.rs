@@ -1,11 +1,14 @@
 use serenity::{
-    all::{CreateInteractionResponse, CreateInteractionResponseMessage}, model::application::Interaction, prelude::*
+    all::CreateInteractionResponseFollowup,
+    model::application::Interaction,
+    prelude::*
 };
 
 use crate::{commands, BotState};
 
 pub async fn handle(ctx: Context, interaction: Interaction) {
     if let Interaction::Command(command) = interaction {
+        let _ = command.defer_ephemeral(&ctx.http).await;
         let content = match command.data.name.as_str() { // Add new commands here
 
             "note" => Some({
@@ -16,11 +19,11 @@ pub async fn handle(ctx: Context, interaction: Interaction) {
             "ping" => Some(commands::ping::execute(&command.data.options())),
 
             
-            _ => Some(CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("ERROR: Not Implemented"))),
+            _ => Some(CreateInteractionResponseFollowup::new().content("ERROR: Command not implemented")),
         };
 
         if let Some(content) = content {
-            if let Err(why) = command.create_response(&ctx.http, content).await {
+            if let Err(why) = command.create_followup(&ctx.http, content).await {
                 println!("Cannot respond to slash command: {}", why);
             }
         }

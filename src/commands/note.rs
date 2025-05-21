@@ -1,6 +1,6 @@
 use serenity::model::application::ResolvedOption;
 use serenity::builder::CreateCommand;
-use serenity::all::{CommandInteraction, CommandOptionType, Context, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, InstallationContext, ResolvedValue, UserId};
+use serenity::all::{CommandInteraction, CommandOptionType, Context, CreateCommandOption, CreateEmbed, CreateInteractionResponseFollowup, InstallationContext, ResolvedValue, UserId};
 use sqlx::{Pool, Postgres};
 
 struct Note {
@@ -65,7 +65,7 @@ pub fn register() -> CreateCommand {
         )
 }
 
-pub async fn execute<'a>(options: &[ResolvedOption<'a>], interaction: CommandInteraction, ctx: Context, db: Pool<Postgres>) -> CreateInteractionResponse {
+pub async fn execute<'a>(options: &[ResolvedOption<'a>], interaction: CommandInteraction, ctx: Context, db: Pool<Postgres>) -> CreateInteractionResponseFollowup {
     for option in options {
         match &option.value {
             ResolvedValue::SubCommand(sub_options) => {
@@ -148,7 +148,7 @@ pub async fn execute<'a>(options: &[ResolvedOption<'a>], interaction: CommandInt
                                 };
 
                                 let response_message = format!("ERROR: Note already exists\n`{}`'s {} note `{}`:\n{}", *name.unwrap(), owner_name, context_text, a.note);
-                                return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(response_message).ephemeral(true))
+                                return CreateInteractionResponseFollowup::new().content(response_message).ephemeral(true);
                             }
                             Ok(None) => { // Note doesn't exist - make it!
                                 let response = sqlx::query!(
@@ -164,15 +164,15 @@ pub async fn execute<'a>(options: &[ResolvedOption<'a>], interaction: CommandInt
                                 match response {
                                     Ok(_) => {
                                         let response_message = format!("Successfully created note `{}`", *name.unwrap());
-                                        return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(response_message).ephemeral(true))
+                                        return CreateInteractionResponseFollowup::new().content(response_message).ephemeral(true);
                                     }
                                     Err(_) => {
-                                        return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("ERROR: Failed to query database when saving note").ephemeral(true))
+                                        return CreateInteractionResponseFollowup::new().content("ERROR: Failed to query database when saving note").ephemeral(true);
                                     }
                                 }
                             }
                             Err(_) => {
-                                return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("ERROR: Failed to query database").ephemeral(true))
+                                return CreateInteractionResponseFollowup::new().content("ERROR: Failed to query database").ephemeral(true);
                             }
                         }
                     }
@@ -263,19 +263,115 @@ pub async fn execute<'a>(options: &[ResolvedOption<'a>], interaction: CommandInt
                                 
                                 match hidenote {
                                     Some(b) => {
-                                        return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(response_text).ephemeral(*b))
+                                        return CreateInteractionResponseFollowup::new().content(response_text).ephemeral(*b);
                                     }
                                     None => {
-                                        return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(response_text))
+                                        return CreateInteractionResponseFollowup::new().content(response_text)
                                     }
                                 }
                             }
                             Ok(None) => { // Note doesn't exist
                                 let response_text = format!("The note `{}` doesn't exist, please specify a note that exists", *name.unwrap());
-                                return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(response_text).ephemeral(true))
+                                return CreateInteractionResponseFollowup::new().content(response_text).ephemeral(true);
                             }
                             Err(_) => {
-                                return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("ERROR: Failed to query database").ephemeral(true))
+                                return CreateInteractionResponseFollowup::new().content("ERROR: Failed to query database").ephemeral(true);
+                            }
+                        }
+                    }
+                    "list" => {
+                        let mut context = None;
+
+                        for option in sub_options { // Get values from interaction
+                            match (&option.name[..], &option.value) {
+                                ("context", ResolvedValue::String(s)) => context = Some(s),
+                                _ => {}
+                            }
+                        };
+
+                        let query_context = match context {
+                            Some(&"server") => {
+                                let guild_id = interaction.guild_id;
+
+                                match guild_id {
+                                    Some(gid) => {
+                                        gid.get()
+                                    }
+                                    None => {
+                                        interaction.user.id.get()
+                                    }
+                                }
+                            }
+                            Some(&"user") => {
+                                interaction.user.id.get()
+                            }
+                            Some(&_a) => {
+                                let guild_id = interaction.guild_id;
+
+                                match guild_id {
+                                    Some(gid) => {
+                                        gid.get()
+                                    }
+                                    None => {
+                                        interaction.user.id.get()
+                                    }
+                                }
+                            }
+                            None => {
+                                let guild_id = interaction.guild_id;
+
+                                match guild_id {
+                                    Some(gid) => {
+                                        gid.get()
+                                    }
+                                    None => {
+                                        interaction.user.id.get()
+                                    }
+                                }
+                            }
+                        };
+
+                        let notes = sqlx::query_as!(
+                            Note,
+                            "SELECT * FROM bot_hd_notes WHERE context = $1 AND owner = $2",
+                            query_context as i64,
+                            interaction.user.id.get() as i64
+                        )
+                        .fetch_all(&db)
+                        .await;
+
+                        match notes {
+                            Ok(notes) => {
+                                let context_text = match context {
+                                    Some(s) => {
+                                        *s
+                                    }
+                                    None => {
+                                        "server"
+                                    }
+                                };
+
+                                let embed_title = format!("{}'s {} notes", interaction.user.display_name(), context_text);
+
+                                let note_text = {
+                                    let mut v_text = String::new();
+
+                                    for note in notes {
+                                        v_text += &format!("{}\n", note.name);
+                                    }
+
+                                    v_text
+                                };
+
+                                let embed = CreateEmbed::new()
+                                    .title(embed_title)
+                                    .color(0x00afff)
+                                    .field("Notes", note_text, true);
+
+                                return CreateInteractionResponseFollowup::new().add_embed(embed).ephemeral(true);
+                            }
+                            Err(_) => {
+                                return CreateInteractionResponseFollowup::new().content("Failed to query database - either you own no notes or the database failed").ephemeral(true);
                             }
                         }
                     }
@@ -356,33 +452,33 @@ pub async fn execute<'a>(options: &[ResolvedOption<'a>], interaction: CommandInt
                                     match response {
                                         Ok(_) => { // Note successfully deleted
                                             let response_text = format!("Successfully deleted note `{}`", String::from(*name.unwrap()));
-                                            return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(response_text).ephemeral(true))
+                                            return CreateInteractionResponseFollowup::new().content(response_text).ephemeral(true);
                                         }
                                         Err(_) => { // Note failed to delete - query failed
-                                            return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("ERROR: Failed to query database").ephemeral(true))
+                                            return CreateInteractionResponseFollowup::new().content("ERROR: Failed to query database").ephemeral(true);
                                         }
                                     }
                                 } else {
-                                    return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("You do not have permission to delete this note as you don't own it").ephemeral(true))
+                                    return CreateInteractionResponseFollowup::new().content("You do not have permission to delete this note as you don't own it").ephemeral(true);
                                 }
                             }
                             Ok(None) => { // Note doesn't exist
                                 let response_text = format!("The note `{}` doesn't exist, please specify a note that exists", *name.unwrap());
-                                return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(response_text).ephemeral(true))
+                                return CreateInteractionResponseFollowup::new().content(response_text).ephemeral(true);
                             }
                             Err(_) => {
-                                return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("ERROR: Failed to query database when verifying ownership").ephemeral(true))
+                                return CreateInteractionResponseFollowup::new().content("ERROR: Failed to query database when verifying ownership").ephemeral(true);
                             }
                         }
                     }
-                    _ => {return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("ERROR: This subcommand is not implemented").ephemeral(true))}
+                    _ => {return CreateInteractionResponseFollowup::new().content("ERROR: This subcommand is not implemented").ephemeral(true)}
                 }
             }
             _ => {
-                return CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("How the fuck did you even get this error discord requires that you select a subcommand when running commands with subcommands"))
+                return CreateInteractionResponseFollowup::new().content("How the fuck did you even get this error discord requires that you select a subcommand when running commands with subcommands")
             }
         }
     };
 
-    CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("ERROR: No Options Found").ephemeral(true))
+    CreateInteractionResponseFollowup::new().content("ERROR: No Options Found").ephemeral(true)
 }
